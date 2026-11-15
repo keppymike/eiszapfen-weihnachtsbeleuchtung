@@ -73,7 +73,7 @@ Programm, Helligkeit und Geschwindigkeit bleiben nach einem Neustart oder Stroma
 
 ## Programme
 
-| Nr. | Name | Verhalten (Grundtempo bei Geschwindigkeit 0 %) |
+| Nr. | Name | Verhalten (Grundtempo bei Geschwindigkeit +/-0 %) |
 |---|---|---|
 | 1 | Mixed | wechselt alle 8 s durch die Programme 2 bis 8 |
 | 2 | In Waves | A und B leuchten in Wellen auf (Periode 3 s, phasenversetzt) |
