@@ -1,0 +1,159 @@
+esphome:
+  name: eiszapfen
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+logger:
+api:
+  encryption:
+    key: !secret api_encryption_key
+ota:
+  - platform: esphome
+    password: !secret ota_password
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+globals:
+  - id: tt          # Effektzeit in Sekunden (laeuft mit dem Geschwindigkeitsfaktor)
+    type: double
+    initial_value: '0.0'
+
+switch:
+  # STBY des TB6612FNG dauerhaft einschalten
+  - platform: gpio
+    pin: GPIO25
+    id: tb_standby
+    internal: true
+    restore_mode: ALWAYS_ON
+
+  - platform: template
+    name: "Eiszapfen Ein/Aus"
+    id: sw_power
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_ON
+
+output:
+  # Zwei LEDC-Kanaele auf demselben Timer, 180 Grad phasenversetzt:
+  # Daraus entsteht die Umpolung der antiparallelen LED-Haelften.
+  - platform: ledc          # -> AIN1, Haelfte A
+    id: out_a
+    pin: GPIO26
+    channel: 0
+    frequency: 1000Hz
+    phase_angle: 0°
+    max_power: 0.5          # Level 1.0 = 50 % Duty, damit sich die Haelften nie ueberlappen
+  - platform: ledc          # -> AIN2, Haelfte B
+    id: out_b
+    pin: GPIO27
+    channel: 1
+    frequency: 1000Hz
+    phase_angle: 180°
+    max_power: 0.5
+
+select:
+  - platform: template
+    name: "Programm"
+    id: sel_prog
+    optimistic: true
+    restore_value: true
+    initial_option: "8 Steady On"
+    options:
+      - "1 Mixed"
+      - "2 In Waves"
+      - "3 Sequential"
+      - "4 Slo-Glo"
+      - "5 Chasing/Flash"
+      - "6 Slow Fade"
+      - "7 Twinkle/Flash"
+      - "8 Steady On"
+
+# Die Werte werden direkt im interval-Lambda aus den Entitaeten gelesen.
+# (set_action laeuft beim Wiederherstellen nach einem Neustart nicht.)
+number:
+  - platform: template
+    name: "Helligkeit"
+    id: num_dim
+    min_value: 0
+    max_value: 100
+    step: 1
+    unit_of_measurement: "%"
+    mode: slider
+    optimistic: true
+    restore_value: true
+    initial_value: 100
+
+  - platform: template
+    name: "Geschwindigkeit"
+    id: num_spd
+    min_value: -50
+    max_value: 50
+    step: 5
+    unit_of_measurement: "%"
+    mode: slider
+    optimistic: true
+    restore_value: true
+    initial_value: 0
+
+interval:
+  - interval: 20ms
+    then:
+      - lambda: |-
+          static uint32_t last = 0;
+          uint32_t now = millis();
+          float dt = (last == 0) ? 0.0f : (now - last) / 1000.0f;
+          last = now;
+          float spd = 1.0f + id(num_spd).state / 100.0f;      // 0.5..1.5
+          float dim = powf(id(num_dim).state / 100.0f, 2.2f); // gamma-korrigiert
+          id(tt) += dt * spd;
+          double t = id(tt);
+
+          if (!id(sw_power).state) { id(out_a).set_level(0); id(out_b).set_level(0); return; }
+
+          int p = (int) id(sel_prog).active_index().value_or(7);
+          if (p == 0) p = 1 + ((int) (t / 8.0)) % 7;   // Mixed: wechselt alle 8 s
+          float a = 1, b = 1;
+          switch (p) {
+            case 1: {  // In Waves
+              float ph = 2 * M_PI * fmod(t, 3.0) / 3.0;
+              a = 0.5f + 0.5f * sinf(ph);
+              b = 0.5f + 0.5f * sinf(ph - 2.1f);
+              break; }
+            case 2: {  // Sequential
+              int st = ((int) (t / 0.7)) % 3;
+              a = (st <= 1) ? 1 : 0;
+              b = (st == 1) ? 1 : 0;
+              break; }
+            case 3: {  // Slo-Glo
+              float ph = 2 * M_PI * fmod(t, 4.0) / 4.0;
+              a = b = 0.2f + 0.8f * (0.5f + 0.5f * sinf(ph));
+              break; }
+            case 4: {  // Chasing/Flash
+              bool x = ((int) (t / 0.15)) % 2;
+              a = x ? 0 : 1;
+              b = x ? 1 : 0;
+              break; }
+            case 5: {  // Slow Fade
+              float ph = 2 * M_PI * fmod(t, 4.0) / 4.0;
+              float x = 0.5f + 0.5f * sinf(ph);
+              a = x;
+              b = 1 - x;
+              break; }
+            case 6: {  // Twinkle/Flash: A Slo-Glo, B funkelt
+              static double next = 0;
+              static float bb = 0;
+              if (t > next) {
+                bb = (random_uint32() % 3 == 0) ? 1.0f : 0.0f;
+                next = t + 0.05 + (random_uint32() % 200) / 1000.0;
+              }
+              float ph = 2 * M_PI * fmod(t, 4.0) / 4.0;
+              a = 0.2f + 0.8f * (0.5f + 0.5f * sinf(ph));
+              b = bb;
+              break; }
+            default: a = b = 1; break;  // Steady On
+          }
+          id(out_a).set_level(a * dim);
+          id(out_b).set_level(b * dim);
