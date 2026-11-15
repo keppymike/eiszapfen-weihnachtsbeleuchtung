@@ -4,6 +4,8 @@ Ersatz-Steuerung für eine 2-adrige LED-Lichterkette (Eiszapfen, 40 LEDs, blau),
 
 Getestet mit der VOLTRONIC 40 LEDs Lichterkette Eiszapfen, sollte aber mit jeder 2-adrigen Kette mit antiparallelen LED-Hälften funktionieren.
 
+![Die Lichterkette im Betrieb](bilder/effekte.gif)
+
 ## Funktionsprinzip
 
 Die Kette hat nur zwei Adern. Die LEDs sind in zwei Hälften mit entgegengesetzter Polung (antiparallel) geschaltet. Bei Gleichspannung leuchtet immer nur eine Hälfte, bei umgekehrter Polung die andere. Das Original-Steuergerät wechselt die Polung schnell und erzeugt daraus alle Effekte.
@@ -18,6 +20,8 @@ Der ESP32 macht dasselbe mit zwei Hardware-PWM-Kanälen (LEDC) mit 1 kHz, die um
 | TB6612FNG Motortreiber-Modul | Nicht den L298N verwenden (zu hoher Spannungsabfall bei 5 V) | |
 | 5-V-Netzteil | Muss den Strom der Kette liefern (vorher messen) | LM2596 DC-DC-Konverter mit 12-V-Quelle am Eingang |
 | Elko 100 µF / 10 V | Zwischen VM und GND am TB6612 | funktioniert auch ohne |
+
+![Testaufbau: ESP32 D1 Mini, TB6612FNG und DC-DC-Konverter auf dem Steckbrett](bilder/aufbau.jpg)
 
 ## Verdrahtung
 
